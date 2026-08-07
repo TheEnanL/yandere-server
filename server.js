@@ -168,32 +168,27 @@ function assignRoles(room) {
   });
 }
 
-const ITEM_POOL = ['choker', 'bubble_tea', 'ninjutsu', 'cosplay', 'ghoul_eye', 'reincarnation', 'feminization', 'yarik'];
+const ITEM_POOL = ['choker', 'bubble_tea', 'ninjutsu', 'cosplay', 'ghoul_eye', 'reincarnation', 'feminization', 'yarik', 'old_god'];
 
-function getRandomItemForPlayer(player) {
-  if (!player.usedItems) player.usedItems = [];
-  let available = ITEM_POOL.filter(it => !player.usedItems.includes(it));
-  if (available.length === 0) {
-    player.usedItems = [];
-    available = ITEM_POOL;
-  }
-  const item = available[Math.floor(Math.random() * available.length)];
-  player.usedItems.push(item);
-  player.currentItem = item;
-  return item;
+function assignDistinctItems(room) {
+  const tsunderes = Object.values(room.players).filter(p => p.role === 'tsundere' && !p.isDead);
+  const shuffled = [...ITEM_POOL].sort(() => Math.random() - 0.5);
+  const items = {};
+  tsunderes.forEach((p, idx) => {
+    const item = shuffled[idx % shuffled.length];
+    p.currentItem = item;
+    if (!p.usedItems) p.usedItems = [];
+    p.usedItems.push(item);
+    items[p.id] = item;
+  });
+  return items;
 }
 
 function startMatch(room) {
   room.state = 'game';
   const gamePlayers = getGamePlayers(room);
 
-  const initialItems = {};
-  Object.values(room.players).forEach(p => {
-    p.usedItems = [];
-    if (p.role === 'tsundere') {
-      initialItems[p.id] = getRandomItemForPlayer(p);
-    }
-  });
+  const initialItems = assignDistinctItems(room);
 
   room.matchDuration = room.matchDuration || 180;
   room.matchTimeRemaining = room.matchDuration;
@@ -303,13 +298,9 @@ function triggerGlobalEvent(room) {
 }
 
 function rotateItems(room) {
-  const newItems = {};
-  Object.values(room.players).forEach(p => {
-    if (p.role === 'tsundere' && !p.isDead) {
-      const item = getRandomItemForPlayer(p);
-      newItems[p.id] = item;
-      broadcastAll(room, { type: 'model_change', id: p.id, itemId: item });
-    }
+  const newItems = assignDistinctItems(room);
+  Object.keys(newItems).forEach(pid => {
+    broadcastAll(room, { type: 'model_change', id: pid, itemId: newItems[pid] });
   });
   broadcastAll(room, { type: 'item_rotate', playerItems: newItems });
 }
@@ -613,6 +604,20 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      case 'break_wall': {
+        const rid = playerRoomMap[clientId];
+        if (!rid || !rooms[rid]) break;
+        broadcastAll(rooms[rid], { type: 'break_wall', pos: msg.pos });
+        break;
+      }
+
+      case 'spectre_teleport': {
+        const rid = playerRoomMap[clientId];
+        if (!rid || !rooms[rid]) break;
+        broadcast(rooms[rid], { type: 'spectre_teleport', id: clientId, pos: msg.pos, yaw: msg.yaw }, clientId);
+        break;
+      }
+
       default:
         break;
     }
@@ -639,9 +644,34 @@ wss.on('connection', (ws) => {
       } else {
         sendLobbyState(room);
       }
+      broadcastRoomListAll();
     }
   });
 });
+
+// ---- Автоматическая очистка фейковых/пустых комнат от застрявших сокетов ----
+setInterval(() => {
+  let changed = false;
+  Object.keys(rooms).forEach(rid => {
+    const room = rooms[rid];
+    Object.keys(room.players).forEach(pid => {
+      const p = room.players[pid];
+      if (!p.ws || p.ws.readyState !== 1) {
+        delete room.players[pid];
+        delete playerRoomMap[pid];
+        changed = true;
+      }
+    });
+    if (Object.keys(room.players).length === 0) {
+      stopMatch(room);
+      delete rooms[rid];
+      changed = true;
+    }
+  });
+  if (changed) {
+    broadcastRoomListAll();
+  }
+}, 10000);
 
 function stopMatch(room) {
   if (room.globalTimer) clearInterval(room.globalTimer);
