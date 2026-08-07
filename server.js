@@ -76,37 +76,27 @@ function broadcastAll(room, msg) {
   broadcast(room, msg);
 }
 
-let userAccounts = {}; // { username: { password, wins, tier } }
-
-function computeTier(wins) {
-  return Math.min(30, Math.max(1, Math.floor(wins / 3) + 1));
-}
-
 function sendRoomList(ws) {
-  const list = Object.values(rooms)
-    .filter(r => r.state === 'lobby' && Object.keys(r.players).length > 0)
-    .map(r => ({
-      id: r.id,
-      name: r.name,
-      hostId: r.hostId,
-      playerCount: Object.keys(r.players).length,
-      maxPlayers: r.maxPlayers,
-      state: r.state
-    }));
+  const list = Object.values(rooms).map(r => ({
+    id: r.id,
+    name: r.name,
+    hostId: r.hostId,
+    playerCount: Object.keys(r.players).length,
+    maxPlayers: r.maxPlayers,
+    state: r.state
+  }));
   ws.send(JSON.stringify({ type: 'room_list', rooms: list }));
 }
 
 function broadcastRoomListAll() {
-  const list = Object.values(rooms)
-    .filter(r => r.state === 'lobby' && Object.keys(r.players).length > 0)
-    .map(r => ({
-      id: r.id,
-      name: r.name,
-      hostId: r.hostId,
-      playerCount: Object.keys(r.players).length,
-      maxPlayers: r.maxPlayers,
-      state: r.state
-    }));
+  const list = Object.values(rooms).map(r => ({
+    id: r.id,
+    name: r.name,
+    hostId: r.hostId,
+    playerCount: Object.keys(r.players).length,
+    maxPlayers: r.maxPlayers,
+    state: r.state
+  }));
   wss.clients.forEach(client => {
     if (client.readyState === 1) {
       client.send(JSON.stringify({ type: 'room_list', rooms: list }));
@@ -119,7 +109,6 @@ function sendLobbyState(room) {
     id: p.id,
     name: p.name,
     tier: p.tier || 1,
-    isGuest: p.isGuest !== false,
     role: p.role,
     ready: p.ready,
     isHost: p.id === room.hostId
@@ -180,7 +169,7 @@ function assignRoles(room) {
   });
 }
 
-const ITEM_POOL = ['choker', 'bubble_tea', 'ninjutsu', 'cosplay', 'ghoul_eye', 'reincarnation', 'feminization', 'yarik', 'old_god', 'ghoul_kagune', 'web_grapple'];
+const ITEM_POOL = ['choker', 'bubble_tea', 'ninjutsu', 'cosplay', 'ghoul_eye', 'reincarnation', 'feminization', 'yarik', 'old_god', 'ghoul_kagune', 'spider_web'];
 
 function assignDistinctItems(room) {
   const tsunderes = Object.values(room.players).filter(p => p.role === 'tsundere' && !p.isDead);
@@ -348,42 +337,7 @@ wss.on('connection', (ws) => {
         sendRoomList(ws);
         break;
 
-      case 'auth_register': {
-        const u = (msg.username || '').trim();
-        const p = (msg.password || '').trim();
-        if (!u || !p) { ws.send(JSON.stringify({ type: 'auth_error', msg: 'Введите логин и пароль!' })); break; }
-        if (userAccounts[u]) { ws.send(JSON.stringify({ type: 'auth_error', msg: 'Логин уже занят!' })); break; }
-        userAccounts[u] = { password: p, wins: 0, tier: 1 };
-        ws.send(JSON.stringify({ type: 'auth_success', username: u, wins: 0, tier: 1 }));
-        break;
-      }
-
-      case 'auth_login': {
-        const u = (msg.username || '').trim();
-        const p = (msg.password || '').trim();
-        if (!userAccounts[u] || userAccounts[u].password !== p) {
-          ws.send(JSON.stringify({ type: 'auth_error', msg: 'Неверный логин или пароль!' }));
-          break;
-        }
-        const acc = userAccounts[u];
-        ws.send(JSON.stringify({ type: 'auth_success', username: u, wins: acc.wins, tier: acc.tier }));
-        break;
-      }
-
-      case 'set_player_info': {
-        ws._playerName = msg.name;
-        ws._playerTier = msg.tier || 1;
-        ws._isGuest    = msg.isGuest !== false;
-        break;
-      }
-
       case 'create_room': {
-        if (playerRoomMap[clientId] && rooms[playerRoomMap[clientId]]) {
-          delete rooms[playerRoomMap[clientId]].players[clientId];
-          if (Object.keys(rooms[playerRoomMap[clientId]].players).length === 0) {
-            delete rooms[playerRoomMap[clientId]];
-          }
-        }
         const roomId = genId();
         const room = {
           id: roomId,
@@ -399,13 +353,7 @@ wss.on('connection', (ws) => {
           feminiTimer: null,
         };
         rooms[roomId] = room;
-        const player = {
-          id: clientId, ws,
-          name: msg.playerName || ws._playerName || 'Player',
-          tier: msg.tier || ws._playerTier || 1,
-          isGuest: msg.isGuest !== undefined ? msg.isGuest : (ws._isGuest !== false),
-          role: msg.role || 'random', ready: false, hp: 3, maxHp: 3, isDead: false, usedItems: []
-        };
+        const player = { id: clientId, ws, name: msg.playerName || 'Player', role: msg.role || 'random', ready: false, hp: 3, maxHp: 3, isDead: false, usedItems: [] };
         room.players[clientId] = player;
         playerRoomMap[clientId] = roomId;
         ws.send(JSON.stringify({ type: 'room_joined', roomId, playerId: clientId, hostId: clientId }));
@@ -415,23 +363,11 @@ wss.on('connection', (ws) => {
       }
 
       case 'join_room': {
-        if (playerRoomMap[clientId] && rooms[playerRoomMap[clientId]]) {
-          delete rooms[playerRoomMap[clientId]].players[clientId];
-          if (Object.keys(rooms[playerRoomMap[clientId]].players).length === 0) {
-            delete rooms[playerRoomMap[clientId]];
-          }
-        }
         const room = rooms[msg.roomId];
         if (!room) { ws.send(JSON.stringify({ type: 'error', msg: 'Комната не найдена' })); break; }
         if (room.state !== 'lobby') { ws.send(JSON.stringify({ type: 'error', msg: 'Игра уже началась' })); break; }
         if (Object.keys(room.players).length >= room.maxPlayers) { ws.send(JSON.stringify({ type: 'error', msg: 'Комната полная' })); break; }
-        const player = {
-          id: clientId, ws,
-          name: msg.playerName || ws._playerName || 'Player',
-          tier: msg.tier || ws._playerTier || 1,
-          isGuest: msg.isGuest !== undefined ? msg.isGuest : (ws._isGuest !== false),
-          role: msg.role || 'tsundere', ready: false, hp: 3, maxHp: 3, isDead: false, usedItems: []
-        };
+        const player = { id: clientId, ws, name: msg.playerName || 'Player', role: msg.role || 'tsundere', ready: false, hp: 3, maxHp: 3, isDead: false, usedItems: [] };
         room.players[clientId] = player;
         playerRoomMap[clientId] = msg.roomId;
         ws.send(JSON.stringify({ type: 'room_joined', roomId: msg.roomId, playerId: clientId, hostId: room.hostId }));
@@ -683,17 +619,28 @@ wss.on('connection', (ws) => {
         break;
       }
 
-      case 'kagune_effect': {
+      case 'kagune_hit': {
         const rid = playerRoomMap[clientId];
         if (!rid || !rooms[rid]) break;
-        broadcastAll(rooms[rid], { type: 'kagune_effect', from: clientId, targetId: msg.targetId, pos: msg.pos, targetPos: msg.targetPos });
+        broadcastAll(rooms[rid], { type: 'kagune_hit', from: clientId, targetId: msg.targetId, duration: msg.duration || 4 });
         break;
       }
 
-      case 'web_grapple': {
+      case 'spider_web_shot': {
         const rid = playerRoomMap[clientId];
         if (!rid || !rooms[rid]) break;
-        broadcastAll(rooms[rid], { type: 'web_grapple', from: clientId, pos: msg.pos, targetPos: msg.targetPos });
+        broadcastAll(rooms[rid], { type: 'spider_web_shot', from: clientId, startPos: msg.startPos, targetPos: msg.targetPos });
+        break;
+      }
+
+      case 'record_win': {
+        const rid = playerRoomMap[clientId];
+        if (!rid || !rooms[rid]) break;
+        const player = rooms[rid].players[clientId];
+        if (player) {
+          player.wins = (player.wins || 0) + 1;
+          player.tier = Math.min(30, 1 + Math.floor(player.wins / 2));
+        }
         break;
       }
 
