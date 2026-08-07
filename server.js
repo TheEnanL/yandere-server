@@ -88,6 +88,22 @@ function sendRoomList(ws) {
   ws.send(JSON.stringify({ type: 'room_list', rooms: list }));
 }
 
+function broadcastRoomListAll() {
+  const list = Object.values(rooms).map(r => ({
+    id: r.id,
+    name: r.name,
+    hostId: r.hostId,
+    playerCount: Object.keys(r.players).length,
+    maxPlayers: r.maxPlayers,
+    state: r.state
+  }));
+  wss.clients.forEach(client => {
+    if (client.readyState === 1) {
+      client.send(JSON.stringify({ type: 'room_list', rooms: list }));
+    }
+  });
+}
+
 function sendLobbyState(room) {
   const players = Object.values(room.players).map(p => ({
     id: p.id,
@@ -350,6 +366,7 @@ wss.on('connection', (ws) => {
         playerRoomMap[clientId] = roomId;
         ws.send(JSON.stringify({ type: 'room_joined', roomId, playerId: clientId, hostId: clientId }));
         sendLobbyState(room);
+        broadcastRoomListAll();
         break;
       }
 
@@ -363,6 +380,7 @@ wss.on('connection', (ws) => {
         playerRoomMap[clientId] = msg.roomId;
         ws.send(JSON.stringify({ type: 'room_joined', roomId: msg.roomId, playerId: clientId, hostId: room.hostId }));
         sendLobbyState(room);
+        broadcastRoomListAll();
         break;
       }
 
