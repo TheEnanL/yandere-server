@@ -351,7 +351,7 @@ wss.on('connection', (ws) => {
           id: roomId,
           hostId: clientId,
           name: msg.name || `Комната #${Object.keys(rooms).length + 1}`,
-          maxPlayers: msg.maxPlayers || 4,
+          maxPlayers: msg.maxPlayers || 15,
           state: 'lobby',
           map: msg.map || 'map_erd',
           players: {},
@@ -579,10 +579,7 @@ wss.on('connection', (ws) => {
       }
 
       case 'man_skill': {
-        const rid = playerRoomMap[clientId];
-        if (!rid || !rooms[rid]) break;
-        broadcastAll(rooms[rid], { type: 'play_sound', sound: 'yuki_loves_me.mp3' });
-        broadcastAll(rooms[rid], { type: 'man_skill_used', from: clientId });
+        // Способность Маньяка теперь срабатывает ТОЛЬКО автоматически каждые 40 секунд (ручной вызов заблокирован)
         break;
       }
 
