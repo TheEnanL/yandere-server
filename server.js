@@ -121,7 +121,9 @@ function sendLobbyState(room) {
     map: room.map || 'map_erd',
     matchDuration: room.matchDuration || 180,
     chaseMusic: room.chaseMusic || '624_-MATADORA.mp3',
-    itemRotateInterval: room.itemRotateInterval !== undefined ? room.itemRotateInterval : 120
+    itemRotateInterval: room.itemRotateInterval !== undefined ? room.itemRotateInterval : 120,
+    fogEnabled: room.fogEnabled !== undefined ? room.fogEnabled : true,
+    fogDensity: room.fogDensity !== undefined ? room.fogDensity : 30
   });
 }
 
@@ -448,6 +450,17 @@ wss.on('connection', (ws) => {
         const room = rooms[rid];
         if (!room.players[clientId] || room.state !== 'lobby') break;
         room.itemRotateInterval = parseInt(msg.interval);
+        sendLobbyState(room);
+        break;
+      }
+
+      case 'set_fog': {
+        const rid = playerRoomMap[clientId];
+        if (!rid || !rooms[rid]) break;
+        const room = rooms[rid];
+        if (!room.players[clientId] || room.state !== 'lobby') break;
+        room.fogEnabled = !!msg.fogEnabled;
+        if (msg.fogDensity !== undefined) room.fogDensity = parseInt(msg.fogDensity);
         sendLobbyState(room);
         break;
       }
