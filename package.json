@@ -1,0 +1,14 @@
+{
+  "name": "yandere-vs-tsunderes",
+  "version": "1.0.0",
+  "description": "PS1-Style 3D Asymmetric Horror Multiplayer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "three": "^0.185.1",
+    "ws": "^8.17.0"
+  }
+}
