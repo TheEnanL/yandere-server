@@ -173,15 +173,36 @@ const ITEM_POOL = ['choker', 'bubble_tea', 'ninjutsu', 'cosplay', 'ghoul_eye', '
 
 function assignDistinctItems(room) {
   const tsunderes = Object.values(room.players).filter(p => p.role === 'tsundere' && !p.isDead);
-  const shuffled = [...ITEM_POOL].sort(() => Math.random() - 0.5);
   const items = {};
-  tsunderes.forEach((p, idx) => {
-    const item = shuffled[idx % shuffled.length];
-    p.currentItem = item;
+  const takenInThisTurn = new Set();
+
+  tsunderes.forEach(p => {
     if (!p.usedItems) p.usedItems = [];
-    p.usedItems.push(item);
-    items[p.id] = item;
+    let unused = ITEM_POOL.filter(it => !p.usedItems.includes(it) && !takenInThisTurn.has(it));
+    if (unused.length === 0) {
+      unused = ITEM_POOL.filter(it => !takenInThisTurn.has(it));
+    }
+    if (unused.length === 0) {
+      unused = ITEM_POOL;
+    }
+
+    const priorityItems = unused.filter(it => ['ghoul_kagune', 'spider_web', 'old_god'].includes(it));
+    let chosenItem;
+    if (priorityItems.length > 0 && Math.random() < 0.70) {
+      chosenItem = priorityItems[Math.floor(Math.random() * priorityItems.length)];
+    } else {
+      chosenItem = unused[Math.floor(Math.random() * unused.length)];
+    }
+
+    p.usedItems.push(chosenItem);
+    if (p.usedItems.length >= ITEM_POOL.length) {
+      p.usedItems = [chosenItem];
+    }
+    p.currentItem = chosenItem;
+    takenInThisTurn.add(chosenItem);
+    items[p.id] = chosenItem;
   });
+
   return items;
 }
 
@@ -609,6 +630,13 @@ wss.on('connection', (ws) => {
         const rid = playerRoomMap[clientId];
         if (!rid || !rooms[rid]) break;
         broadcastAll(rooms[rid], { type: 'break_wall', pos: msg.pos });
+        break;
+      }
+
+      case 'lower_red_wall': {
+        const rid = playerRoomMap[clientId];
+        if (!rid || !rooms[rid]) break;
+        broadcastAll(rooms[rid], { type: 'lower_red_wall', wallId: msg.wallId });
         break;
       }
 
